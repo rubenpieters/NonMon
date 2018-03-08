@@ -1,8 +1,11 @@
-module Syntax where
+module Language.Syntax where
 
 type VariableIdentifier = String
 type OperationIdentifier = String
-type InjectIdentifier = Int
+data InjectIdentifier = Inj0 | Inj1
+  deriving (Show, Eq, Ord)
+
+type Program = [(Value, ValueType)]
 
 -- A,B ::=
 data ValueType
@@ -16,6 +19,7 @@ data ValueType
   | VTSum ValueType ValueType
   -- {C}_E
   | VTThunk ComputationType EffectSignature
+  deriving (Show, Eq, Ord)
 
 -- C ::=
 data ComputationType
@@ -23,12 +27,28 @@ data ComputationType
   = CTReturner
   -- A -> C
   | CTFunction
+  deriving (Show, Eq, Ord)
 
--- E ::= op_0: A_0 -> B_0, ..., op_n: A_n -> B_n
-type EffectSignature = [(OperationIdentifier, ValueType, ValueType)]
+-- E ::= { op: A -> B } ⨄ E | {f} ⨄ E | ∅
+type EffectSignature =
+  ( [(OperationIdentifier, ValueType, ValueType)]
+  , [FlowEffect]
+  )
 
--- Γ ::= x_0: A_0, ..., x_n: A_n
-type Environment = [(VariableIdentifier, ValueType)]
+-- f ::= c | d
+data FlowEffect
+  = Control
+  | Data
+  deriving (Show, Eq, Ord)
+
+-- x: A | x*: A
+data Activity
+  = Active
+  | InActive
+  deriving (Show, Eq, Ord)
+
+-- Γ ::= Γ, x: A | Γ, x*: A | ⸳
+type Environment = [(Activity, VariableIdentifier, ValueType)]
 
 -- V,W ::=
 data Value
@@ -38,19 +58,20 @@ data Value
   | ValUnit
   -- (V, W)
   | ValPair Value Value
-  -- inj_i V
+  -- in_i V
   | ValInjection InjectIdentifier Value
   -- {M}
   | ValThunk Computation
+  deriving (Show, Eq, Ord)
 
 -- M,N ::=
 data Computation
   -- split(V, x.y.M)
-  = ComSplit Value Computation
+  = ComSplit Value VariableIdentifier VariableIdentifier Computation
   -- case0(V)
   | ComCase0 Value
   -- case(V, x.M, y.N)
-  | ComCase Value Computation
+  | ComCase Value VariableIdentifier Computation VariableIdentifier Computation
   -- V!
   | ComForce Value
   -- return V
@@ -60,6 +81,20 @@ data Computation
   -- \x.M
   | ComLambda VariableIdentifier Computation
   -- M V
-  | ComApply Computation Value
-  -- op V
+  | ComLambdaApply Computation Value
+  -- symbol ':' introduced for operations for easier parsing
+  -- :op V
   | ComOperationApply OperationIdentifier Value
+  -- handle M with H
+  | ComHandle Computation Handler
+  deriving (Show, Eq, Ord)
+
+type Handler = [HandlerClause]
+
+-- H ::=
+data HandlerClause
+  -- | return x -> M
+  = HanValClause VariableIdentifier Computation
+  -- | :op p k -> M
+  | HanOpClause OperationIdentifier VariableIdentifier VariableIdentifier Computation
+  deriving (Show, Eq, Ord)
