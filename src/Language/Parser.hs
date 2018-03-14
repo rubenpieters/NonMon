@@ -26,12 +26,13 @@ grammar = mdo
 
       sym x   = tok $ token x <?> [x]
       ident   = tok $ (:) <$> satisfy isAlpha <*> many (satisfy isAlphaNum) <?> "identifier"
+      ident0  = (\x -> (x, 0)) <$> ident
       num     = tok $ some (satisfy isDigit) <?> "number"
       syms w  = tok $ list w
 
 
   val0 <- rule
-     $  ValVariable <$> ident
+     $  ValVariable <$> ident0
     <|> ValPair <$> (sym '(' *> val)
                 <*> (sym ',' *> val <* sym ')')
     <|> ValInjection <$> (list "in_0" *> pure Inj0)
@@ -55,10 +56,10 @@ grammar = mdo
                 <*> (sym '.' *> comp)
                 <*> (sym '.' *> comp <* sym ')')
     <|> ComReturn <$> (list "return" *> val)
-    <|> ComLet <$> (list "let" *> ident)
+    <|> ComLet <$> (list "let" *> ident0)
                <*> (syms "<-" *> comp)
                <*> (syms "in" *> comp)
-    <|> ComLambda <$> (sym '\\' *> ident)
+    <|> ComLambda <$> (sym '\\' *> ident0)
                   <*> (sym '.' *> comp)
     <|> ComLambdaApply <$> comp
                        <*> (sym ' ' *> val)
@@ -73,11 +74,11 @@ grammar = mdo
     <|> sym '(' *> comp <* sym ')'
 
   handlerClause <- rule
-     $  HanValClause <$> (sym '|' *> whitespace *> list "return" *> ident)
+     $  HanValClause <$> (sym '|' *> whitespace *> list "return" *> ident0)
                      <*> (syms "->" *> comp)
     <|> HanOpClause <$> (sym '|' *> sym ':' *> ident)
-                    <*> (sym ' ' *> ident)
-                    <*> (sym ' ' *> ident)
+                    <*> (sym ' ' *> ident0)
+                    <*> (sym ' ' *> ident0)
                     <*> (syms "->" *> comp)
     <?> "handler clause"
 

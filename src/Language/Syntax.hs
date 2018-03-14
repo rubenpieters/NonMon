@@ -1,6 +1,6 @@
 module Language.Syntax where
 
-type VariableIdentifier = String
+type VariableIdentifier = (String, Int)
 type OperationIdentifier = String
 data InjectIdentifier = Inj0 | Inj1
   deriving (Show, Eq, Ord)

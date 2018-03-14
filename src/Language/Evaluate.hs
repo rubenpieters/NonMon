@@ -34,8 +34,7 @@ evalCom (ComLet x (ComReturn v) n) =
 evalCom (ComLambdaApply (ComLambda x m) v) =
   m & substituteCom x v
 
--- TODO: alpha rename before substitution, to prevent accidental binding
-substituteCom :: String -> Value -> Computation -> Computation
+substituteCom :: VariableIdentifier -> Value -> Computation -> Computation
 substituteCom x v (ComSplit v' m') =
   ComSplit
     (v' & substituteVal x v)
@@ -55,9 +54,18 @@ substituteCom x v (ComReturn v') =
   ComReturn
     (v' & substituteVal x v)
 substituteCom x v (ComLet x' m' n') =
-  error "alpha rename"
+  ComLet x'
+    (m' & substituteCom x vTicked)
+    (n' & substituteCom x vTicked)
+  where
+    mx = maxTickCom m'
+    vTicked = v & addTickVal (mx + 1)
 substituteCom x v (ComLambda x' m') =
-  error "alpha rename"
+  ComLambda x'
+    (m' & substituteCom x vTicked)
+  where
+    mx = maxTickCom m'
+    vTicked = v & addTickVal (mx + 1)
 substituteCom x v (ComLambdaApply m' v') =
   ComLambdaApply
     (m' & substituteCom x v)
@@ -70,18 +78,24 @@ substituteCom x v (ComHandle m' h') =
     (m' & substituteCom x v)
     (h' & substituteHan x v)
 
-substituteHan :: String -> Value -> Handler -> Handler
+substituteHan :: VariableIdentifier -> Value -> Handler -> Handler
 substituteHan _ _ [] = []
-substituteHan x v ((HanValClause x' m'):r) =
+substituteHan x v (HanValClause x' m' : r) =
   HanValClause x'
-    (error "alpha rename")
+    (m' & substituteCom x vTicked)
   : (r & substituteHan x v)
-substituteHan x v ((HanOpClause op' p' k' m'):r) =
+  where
+    mx = maxTickCom m'
+    vTicked = v & addTickVal (mx + 1)
+substituteHan x v (HanOpClause op' p' k' m' : r) =
   HanOpClause op' p' k'
-    (error "alpha rename")
+    (m' & substituteCom x vTicked)
   : (r & substituteHan x v)
+  where
+    mx = maxTickCom m'
+    vTicked = v & addTickVal (mx + 1)
 
-substituteVal :: String -> Value -> Value -> Value
+substituteVal :: VariableIdentifier -> Value -> Value -> Value
 substituteVal x v (ValVariable x') | x == x' = v
 substituteVal _ _ w@(ValVariable _) = w
 substituteVal _ _ w@(ValUnit) = w
@@ -95,3 +109,83 @@ substituteVal x v (ValInjection inj v') =
 substituteVal x v (ValThunk m') =
   ValThunk
     (m' & substituteCom x v)
+
+-- very simple alpha renaming
+-- keep track of extra number for (un)bound variables (the ticker)
+-- when substituting into an environment which binds new variables
+-- then: get maximum value for this environment, and increase the ticker
+--       by this maximum + 1, ensuring no accidental binding
+
+maxTickVal :: Value -> Int
+maxTickVal val = go 0 val
+  where
+    go mx (ValVariable (_, t)) = max mx t
+    go mx (ValUnit) = mx
+    go mx (ValPair v w) = max (go mx v) (go mx w)
+    go mx (ValInjection _ v) = go mx v
+    go mx (ValThunk m) = max mx (maxTickCom m)
+
+maxTickCom :: Computation -> Int
+maxTickCom com = go 0 com
+  where
+    go mx (ComSplit v m) = max (maxTickVal v) (go mx m)
+    go mx (ComCase0 v) = max mx (maxTickVal v)
+    go mx (ComCase v m n) = maximum [maxTickVal v, go mx m, go mx n]
+    go mx (ComForce v) = max mx (maxTickVal v)
+    go mx (ComReturn v) = max mx (maxTickVal v)
+    go mx (ComLet (_, t) m n) = maximum [t, go mx m, go mx n]
+    go mx (ComLambda (_, t) m) = maximum [t, go mx m]
+    go mx (ComLambdaApply m n) = max (go mx m) (maxTickVal n)
+    go mx (ComOperationApply _ v) = max mx (maxTickVal v)
+    go mx (ComHandle m h) = maximum [go mx m, maxTickHan h]
+
+maxTickHan :: Handler -> Int
+maxTickHan han = go 0 han
+ where
+   go mx [] = mx
+   go mx (HanValClause (_, t) m : r) =
+     go (maximum [mx, t, maxTickCom m]) r
+   go mx (HanOpClause _ (_, t1) (_, t2) m : r) =
+     go (maximum [mx, t1, t2, maxTickCom m]) r
+
+addTickVal :: Int -> Value -> Value
+addTickVal x (ValVariable (v, t)) = ValVariable (v, t + x)
+addTickVal x v@(ValUnit) = v
+addTickVal x (ValPair v w) = ValPair (v & addTickVal x) (w & addTickVal x)
+addTickVal x (ValInjection inj v) = ValInjection inj (v & addTickVal x)
+addTickVal x (ValThunk m) = ValThunk (m & addTickCom x)
+
+addTickCom :: Int -> Computation -> Computation
+addTickCom x (ComSplit v m) = ComSplit (v & addTickVal x) (m & addTickCom x)
+addTickCom x (ComCase0 v) = ComCase0 (v & addTickVal x)
+addTickCom x (ComCase v m n) = ComCase
+  (v & addTickVal x)
+  (m & addTickCom x)
+  (n & addTickCom x)
+addTickCom x (ComForce v) = ComForce (v & addTickVal x)
+addTickCom x (ComReturn v) = ComReturn (v & addTickVal x)
+addTickCom x (ComLet (v, t) m n) = ComLet
+  (v, t + x)
+  (m & addTickCom x)
+  (n & addTickCom x)
+addTickCom x (ComLambda (v, t) m) = ComLambda (v, t + x) (m & addTickCom x)
+addTickCom x (ComLambdaApply m v) = ComLambdaApply (m & addTickCom x) (v & addTickVal x)
+addTickCom x (ComOperationApply op v) = ComOperationApply op (v & addTickVal x)
+addTickCom x (ComHandle m h) = ComHandle (m & addTickCom x) (h & addTickHan x)
+
+addTickHan :: Int -> Handler -> Handler
+addTickHan _ [] = []
+addTickHan x (HanValClause (v, t) m : r) =
+  HanValClause (v, t + x)
+    (m & addTickCom x)
+  : (r & addTickHan x)
+addTickHan x (HanOpClause op (p, t1) (k, t2) m : r) =
+  HanOpClause op (p, t1 + x) (k, t2 + x)
+    (m & addTickCom x)
+  : (r & addTickHan x)
+
+testAlphaRename :: Computation
+testAlphaRename = evalCom $
+  ComLambdaApply
+    (ComLambda ("x", 0) (ComLambda ("z", 0) (ComForce (ValVariable ("x", 0)))))
+    (ValVariable ("z", 0))
