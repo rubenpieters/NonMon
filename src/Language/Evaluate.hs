@@ -4,35 +4,103 @@ import Data.Function ((&))
 
 import Language.Syntax
 
-evalCom :: Computation -> Computation
+findDef :: Program -> DeclarationIdentifier -> Value
+findDef [] def = error ("can't find top-level definition " ++ def)
+findDef (TLDeclaration declName val : _) def | declName == def = val
+findDef (_ : r) def = findDef r def
+
+findOp :: Handler -> OperationIdentifier -> Computation
+findOp [] op = error ("unhandled operation: " ++ op)
+findOp (HanOpClause op' p k m : _) op | op' == op = ComLambda p (ComLambda k m)
+findOp (_ : r) op = findOp r op
+
+findVal :: Handler -> Computation
+findVal [] = error ("unhandled value clause")
+findVal (HanValClause x m : _) = ComLambda x m
+findVal (_ : r) = findVal r
+
+repeatEval :: Program -> Computation -> Computation
+repeatEval p com = case evalCom p com of
+  Just newCom ->
+    repeatEval p newCom
+  Nothing -> com
+
+evalCom :: Program -> Computation -> Maybe Computation
 -- split((v,w), \x.\y.m)
 -- m[x=v,y=w]
-evalCom (ComSplit (ValPair v w) (ComLambda x (ComLambda y m))) =
+evalCom p (ComSplit (ValPair v w) (ComLambda x (ComLambda y m))) =
+  return $
   m & substituteCom x v
     & substituteCom y w
+evalCom p (ComSplit (ValPair v w) (ComLambda x _)) = error "runtime error: ComSplit, no \\x.\\y."
+evalCom p (ComSplit (ValPair v w) _) = error "runtime error: ComSplit, no \\x."
+evalCom p (ComSplit (ValVariable (v, _)) m) =
+  let v' = findDef p v in
+  return $
+  ComSplit v' m
+evalCom p (ComSplit _ _) = error "runtime error: ComSplit, not splitting a pair"
 --evalCom (ComCase0 ()) =
 -- case(in_0 v, \x.m, \y.n)
 -- m[x=v]
-evalCom (ComCase (ValInjection Inj0 v) (ComLambda x m) _) =
+evalCom p (ComCase (ValInjection Inj0 v) (ComLambda x m) _) =
+  return $
   m & substituteCom x v
 -- case(in_1 v, \x.m, \y.n)
 -- n[y=v]
-evalCom (ComCase (ValInjection Inj1 v) (ComLambda y n) _) =
+evalCom p (ComCase (ValInjection Inj1 v) (ComLambda y n) _) =
+  return $
   n & substituteCom y v
 -- {m}!
 -- m
-evalCom (ComForce (ValThunk m)) = m
--- handle (return v) with | return x -> m
--- m[x=v]
-
+evalCom p (ComForce (ValThunk m)) = return m
+evalCom p (ComForce (ValVariable (v, _))) =
+  let v' = findDef p v in
+  return $
+  ComForce v'
+-- handle (return v) with h{| return x -> m, ...}
+-- handle ((\x.m) v) with h
+evalCom p (ComHandle (ComReturn v) h) =
+  let
+    m = findVal h
+  in
+  return $
+  ComLambdaApply m v
+-- handle (let x <- :op v in n) with h{| :op p k -> m, ...}
+-- handle ((\p.\k.m) v {\x.n}) with h
+evalCom p (ComHandle (ComLet x@(_, t) (ComOperationApply op v) n) h) =
+  let
+    m = findOp h op
+    tickedHandle = (ComHandle n (h & addTickHan (t + 1)))
+  in
+  return $
+  ComLambdaApply (ComLambdaApply m v) (ValThunk (ComLambda x tickedHandle))
+evalCom p (ComHandle (ComLet x m n) h) =
+  return $
+  ComHandle (ComLet x (repeatEval p m) n) h
+evalCom p (ComHandle m h) =
+  return $
+  ComHandle (repeatEval p m) h
 -- let x <- (return V) in n
 -- n[x=v]
-evalCom (ComLet x (ComReturn v) n) =
+evalCom p (ComLet x (ComReturn v) n) =
+  return $
   n & substituteCom x v
+evalCom p (ComLet x (ComOperationApply op v) n) =
+  Nothing
+evalCom p (ComLet x m n) =
+  return $
+  ComLet x (repeatEval p m) n
 -- (\x.m) v
 -- m[x=v]
-evalCom (ComLambdaApply (ComLambda x m) v) =
+evalCom p (ComLambdaApply (ComLambda x m) v) =
+  return $
   m & substituteCom x v
+evalCom p (ComLambdaApply m v) =
+  return $
+  ComLambdaApply (repeatEval p m) v
+evalCom p com@(ComLambda{}) = Nothing
+evalCom p com@(ComReturn{}) = Nothing
+evalCom _ com@_ = error ("TODO: " ++ show com)
 
 -- variable substitution
 
@@ -186,8 +254,8 @@ addTickHan x (HanOpClause op (p, t1) (k, t2) m : r) =
     (m & addTickCom x)
   : (r & addTickHan x)
 
-testAlphaRename :: Computation
-testAlphaRename = evalCom $
+testAlphaRename :: Maybe Computation
+testAlphaRename = evalCom [] $
   ComLambdaApply
     (ComLambda ("x", 0) (ComLambda ("z", 0) (ComForce (ValVariable ("x", 0)))))
     (ValVariable ("z", 0))

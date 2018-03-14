@@ -44,17 +44,17 @@ grammar = mdo
     <?> "value"
 
   val <- rule
-     $  val0
+     $  whitespace *> val0
     <|> sym '(' *> val <* sym ')'
 
   comp0 <- rule
      $  ComForce <$> (val <* sym '!')
     <|> ComSplit <$> (list "split" *> sym '(' *> val)
-                 <*> (sym '.' *> comp <* sym ')')
+                 <*> (sym ',' *> comp <* sym ')')
     <|> ComCase0 <$> (list "case0" *> sym '(' *> val <* sym ')')
     <|> ComCase <$> (list "case" *> sym '(' *> val)
-                <*> (sym '.' *> comp)
-                <*> (sym '.' *> comp <* sym ')')
+                <*> (sym ',' *> comp)
+                <*> (sym ',' *> comp <* sym ')')
     <|> ComReturn <$> (list "return" *> val)
     <|> ComLet <$> (list "let" *> ident0)
                <*> (syms "<-" *> comp)
@@ -70,11 +70,11 @@ grammar = mdo
     <?> "computation"
 
   comp <- rule
-     $  comp0
+     $  whitespace *> comp0
     <|> sym '(' *> comp <* sym ')'
 
   handlerClause <- rule
-     $  HanValClause <$> (sym '|' *> whitespace *> list "return" *> ident0)
+     $  HanValClause <$> (sym '|' *> syms "return" *> ident0)
                      <*> (syms "->" *> comp)
     <|> HanOpClause <$> (sym '|' *> sym ':' *> ident)
                     <*> (sym ' ' *> ident0)
