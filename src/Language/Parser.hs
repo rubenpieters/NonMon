@@ -1,6 +1,4 @@
 {-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE ExplicitForAll#-}
-{-# LANGUAGE ApplicativeDo #-}
 
 module Language.Parser where
 
@@ -32,7 +30,7 @@ grammar = mdo
       syms w  = tok $ list w
 
 
-  val <- rule
+  val0 <- rule
      $  ValVariable <$> ident
     <|> ValPair <$> (sym '(' *> val)
                 <*> (sym ',' *> val <* sym ')')
@@ -42,18 +40,19 @@ grammar = mdo
                      <*> val
     <|> pure ValUnit <* (sym '(' *> sym ')')
     <|> ValThunk <$> (sym '{' *> comp <* sym '}')
+    <?> "value"
 
-  comp <- rule
+  val <- rule
+     $  val0
+    <|> sym '(' *> val <* sym ')'
+
+  comp0 <- rule
      $  ComForce <$> (val <* sym '!')
     <|> ComSplit <$> (list "split" *> sym '(' *> val)
-                 <*> (sym ',' *> ident)
-                 <*> (sym '.' *> ident)
                  <*> (sym '.' *> comp <* sym ')')
     <|> ComCase0 <$> (list "case0" *> sym '(' *> val <* sym ')')
     <|> ComCase <$> (list "case" *> sym '(' *> val)
-                <*> (sym ',' *> ident)
                 <*> (sym '.' *> comp)
-                <*> (sym ',' *> ident)
                 <*> (sym '.' *> comp <* sym ')')
     <|> ComReturn <$> (list "return" *> val)
     <|> ComLet <$> (list "let" *> ident)
@@ -67,6 +66,11 @@ grammar = mdo
                           <*> (sym ' ' *> val)
     <|> ComHandle <$> (list "handle" *> comp)
                   <*> (syms "with" *> many handlerClause)
+    <?> "computation"
+
+  comp <- rule
+     $  comp0
+    <|> sym '(' *> comp <* sym ')'
 
   handlerClause <- rule
      $  HanValClause <$> (sym '|' *> whitespace *> list "return" *> ident)
@@ -75,11 +79,14 @@ grammar = mdo
                     <*> (sym ' ' *> ident)
                     <*> (sym ' ' *> ident)
                     <*> (syms "->" *> comp)
+    <?> "handler clause"
 
   return $ val <* whitespace
 
 
---    parse = fullParses (parser grammar)
+parse :: String -> Value
+parse x = head $ fst $ fullParses (parser grammar) x
+
 --    parseResult = head . fst . parse
 
 try :: String -> IO ()

@@ -66,12 +66,12 @@ data Value
 
 -- M,N ::=
 data Computation
-  -- split(V, x.y.M)
-  = ComSplit Value VariableIdentifier VariableIdentifier Computation
+  -- split(V, M)
+  = ComSplit Value Computation
   -- case0(V)
   | ComCase0 Value
-  -- case(V, x.M, y.N)
-  | ComCase Value VariableIdentifier Computation VariableIdentifier Computation
+  -- case(V, M, N)
+  | ComCase Value Computation Computation
   -- V!
   | ComForce Value
   -- return V
