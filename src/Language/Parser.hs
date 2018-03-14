@@ -17,7 +17,7 @@ keywords = HS.fromList ["in_0", "in_1", "split", "case0", "case", "return", "let
 notIn :: HashSet String -> String -> Bool
 notIn hs s = not (HS.member s hs)
 
-grammar :: Grammar r (Prod r String Char Value)
+grammar :: Grammar r (Prod r String Char Program)
 grammar = mdo
   whitespace <- rule $ many $ satisfy isSpace
 
@@ -82,10 +82,14 @@ grammar = mdo
                     <*> (syms "->" *> comp)
     <?> "handler clause"
 
-  return $ val <* whitespace
+  toplevel <- rule
+     $  TLDeclaration <$> (ident)
+                      <*> (sym '=' *> val)
+
+  return $ (many toplevel) <* whitespace
 
 
-parse :: String -> Value
+parse :: String -> Program
 parse x = head $ fst $ fullParses (parser grammar) x
 
 --    parseResult = head . fst . parse

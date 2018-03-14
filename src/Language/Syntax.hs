@@ -1,11 +1,16 @@
 module Language.Syntax where
 
+type DeclarationIdentifier = String
 type VariableIdentifier = (String, Int)
 type OperationIdentifier = String
 data InjectIdentifier = Inj0 | Inj1
   deriving (Show, Eq, Ord)
 
-type Program = [(Value, ValueType)]
+type Program = [TopLevelDeclaration]
+
+data TopLevelDeclaration
+  = TLDeclaration DeclarationIdentifier Value
+  deriving (Show, Eq, Ord)
 
 -- A,B ::=
 data ValueType

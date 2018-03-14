@@ -34,6 +34,8 @@ evalCom (ComLet x (ComReturn v) n) =
 evalCom (ComLambdaApply (ComLambda x m) v) =
   m & substituteCom x v
 
+-- variable substitution
+
 substituteCom :: VariableIdentifier -> Value -> Computation -> Computation
 substituteCom x v (ComSplit v' m') =
   ComSplit
