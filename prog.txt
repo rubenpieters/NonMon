@@ -2,12 +2,22 @@ get2 =
 {
      let x <- :get ()
   in let y <- :get ()
-  in return x
+  in return (x, y)
 }
 
-main =
-{
-  handle (get2!) with
+handlerSimple =
+{ \comp.
+  handle (comp!) with
   | return x -> return x
   | :get p k -> (k! ())
 }
+
+handlerRunState =
+{ \comp.
+  handle (comp!) with
+  | return x -> (\s. (return (x, s)))
+  | :get p k -> (\s. k! s s)
+  | :put p k -> (\s. k! () p)
+}
+
+main = {(handlerRunState! get2) ()}

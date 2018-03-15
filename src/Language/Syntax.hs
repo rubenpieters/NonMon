@@ -67,6 +67,9 @@ data Value
   | ValInjection InjectIdentifier Value
   -- {M}
   | ValThunk Computation
+  -- the wildcard value, used for creating non-monadic handlers
+  -- ?
+  | ValWildcard
   deriving (Show, Eq, Ord)
 
 -- M,N ::=

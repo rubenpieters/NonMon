@@ -1,0 +1,23 @@
+pr1 =
+{
+     let x <- :get ()
+  in let y <- :get ()
+  in return (x, y)
+}
+
+pr2 =
+{
+     let x <- :get ()
+  in let y <- :put x
+  in return (x, y)
+}
+
+handlerPuts =
+{ \comp.
+  handle (comp!) with
+  | return x -> return (in_0 ())
+  | :get p k -> k! ?
+  | :put p k -> return (in_1 ())
+}
+
+main = {handlerPuts! pr1}

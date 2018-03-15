@@ -179,6 +179,7 @@ substituteVal x v (ValInjection inj v') =
 substituteVal x v (ValThunk m') =
   ValThunk
     (m' & substituteCom x v)
+substituteVal _ _ w@(ValWildcard) = w
 
 -- very simple alpha renaming
 -- keep track of extra number for (un)bound variables (the ticker)
@@ -194,6 +195,7 @@ maxTickVal val = go 0 val
     go mx (ValPair v w) = max (go mx v) (go mx w)
     go mx (ValInjection _ v) = go mx v
     go mx (ValThunk m) = max mx (maxTickCom m)
+    go mx (ValWildcard) = mx
 
 maxTickCom :: Computation -> Int
 maxTickCom com = go 0 com
@@ -220,10 +222,11 @@ maxTickHan han = go 0 han
 
 addTickVal :: Int -> Value -> Value
 addTickVal x (ValVariable (v, t)) = ValVariable (v, t + x)
-addTickVal x v@(ValUnit) = v
+addTickVal _ v@(ValUnit) = v
 addTickVal x (ValPair v w) = ValPair (v & addTickVal x) (w & addTickVal x)
 addTickVal x (ValInjection inj v) = ValInjection inj (v & addTickVal x)
 addTickVal x (ValThunk m) = ValThunk (m & addTickCom x)
+addTickVal _ v@(ValWildcard) = v
 
 addTickCom :: Int -> Computation -> Computation
 addTickCom x (ComSplit v m) = ComSplit (v & addTickVal x) (m & addTickCom x)

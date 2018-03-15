@@ -8,8 +8,11 @@ import Language.Evaluate
 import Language.Printer
 
 main :: IO ()
-main = do
-  prog :: String <- readFile "prog.txt"
+main = run "prog.txt"
+
+run :: String -> IO ()
+run file = do
+  prog :: String <- readFile file
   let (parseResult :: Program) = parse prog
   putStrLn "parsed"
   print parseResult

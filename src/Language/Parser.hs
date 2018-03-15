@@ -17,6 +17,9 @@ keywords = HS.fromList ["in_0", "in_1", "split", "case0", "case", "return", "let
 notIn :: HashSet String -> String -> Bool
 notIn hs s = not (HS.member s hs)
 
+-- TODO: increase tick each time variable is shadowed
+-- for example in "test={\x.(\x.x!)}"
+
 grammar :: Grammar r (Prod r String Char Program)
 grammar = mdo
   whitespace <- rule $ many $ satisfy isSpace
@@ -39,8 +42,9 @@ grammar = mdo
                      <*> val
     <|> ValInjection <$> (list "in_1" *> pure Inj1)
                      <*> val
-    <|> pure ValUnit <* (sym '(' *> sym ')')
+    <|> pure ValUnit <* (syms "()")
     <|> ValThunk <$> (sym '{' *> comp <* sym '}')
+    <|> pure ValWildcard <* (sym '?')
     <?> "value"
 
   val <- rule
