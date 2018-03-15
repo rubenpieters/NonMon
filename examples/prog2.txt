@@ -1,6 +1,7 @@
 pr1 =
 {
      let x <- :get ()
+  in let p <- :print x
   in let y <- :get ()
   in return (x, y)
 }

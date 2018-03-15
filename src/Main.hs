@@ -17,7 +17,7 @@ run file = do
   putStrLn "parsed"
   print parseResult
   let (mainDef :: Computation) = findMain parseResult
-  let (evaledMain :: Computation) = repeatEval parseResult mainDef
+  (evaledMain :: Computation) <- repeatEval parseResult mainDef
   putStrLn "evaled"
   print evaledMain
   putStrLn "evaled pretty"
