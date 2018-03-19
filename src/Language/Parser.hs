@@ -1,103 +1,222 @@
-{-# LANGUAGE RecursiveDo #-}
-
 module Language.Parser where
 
 import Language.Syntax
 
-import Data.Char
-import Control.Applicative
-import Text.Earley
+import Control.Monad
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HS
+import Text.Parsec
+import Text.Parsec.String
+import Text.Parsec.Language
+import Text.Parsec.Expr
+import qualified Text.Parsec.Token as Token
 
-keywords :: HashSet String
-keywords = HS.fromList ["in_0", "in_1", "split", "case0", "case", "return", "let", "in"]
+names =
+  [ "let"
+  , "in"
+  , "in_0"
+  , "in_1"
+  , "split"
+  , "case"
+  , "case0"
+  , "handle"
+  , "with"
+  , "return"
+  ]
 
-notIn :: HashSet String -> String -> Bool
-notIn hs s = not (HS.member s hs)
+opNames =
+  [ "let"
+  , "in"
+  , "in_0"
+  , "in_1"
+  , "split"
+  , "case"
+  , "case0"
+  , "handle"
+  , "with"
+  , "return"
+  , "<-"
+  , ":"
+  , "|"
+  , "->"
+  ]
 
--- TODO: increase tick each time variable is shadowed
--- for example in "test={\x.(\x.x!)}"
+languageDef :: LanguageDef st
+languageDef = emptyDef
+  { Token.commentStart    = "{-"
+  , Token.commentEnd      = "-}"
+  , Token.commentLine     = "--"
+  , Token.nestedComments  = True
+  , Token.identStart      = letter
+  , Token.identLetter     = alphaNum <|> char '_'
+  , Token.reservedNames   = names
+  , Token.reservedOpNames = opNames
+  }
 
-grammar :: Grammar r (Prod r String Char Program)
-grammar = mdo
-  whitespace <- rule $ many $ satisfy isSpace
+lexer = Token.makeTokenParser languageDef
 
-  let --tok :: Prod r String Char a -> Prod r String Char a
-      tok p   = whitespace *> p
+identifier = Token.identifier lexer
+symbol = Token.symbol lexer
+reserved = Token.reserved lexer
+reservedOp = Token.reservedOp lexer
+parens = Token.parens lexer
+braces = Token.braces lexer
+brackets = Token.brackets lexer
+whiteSpace = Token.whiteSpace lexer
 
-      sym x   = tok $ token x <?> [x]
-      ident   = tok $ (:) <$> satisfy isAlpha <*> many (satisfy isAlphaNum) <?> "identifier"
-      ident0  = (\x -> (x, 0)) <$> ident
-      num     = tok $ some (satisfy isDigit) <?> "number"
-      syms w  = tok $ list w
+varIdent :: Parser VariableIdentifier
+varIdent = (\x -> (x, 0)) <$> identifier
 
+data Term
+ = Comp Computation
+ | Val Value
+ | Op OperationIdentifier
+ deriving (Eq, Show, Ord)
 
-  val0 <- rule
-     $  ValVariable <$> ident0
-    <|> ValPair <$> (sym '(' *> val)
-                <*> (sym ',' *> val <* sym ')')
-    <|> ValInjection <$> (list "in_0" *> pure Inj0)
-                     <*> val
-    <|> ValInjection <$> (list "in_1" *> pure Inj1)
-                     <*> val
-    <|> pure ValUnit <* (syms "()")
-    <|> ValThunk <$> (sym '{' *> comp <* sym '}')
-    <|> pure ValWildcard <* (sym '?')
-    <?> "value"
+parseTerm :: Parser Term
+parseTerm =
+  buildExpressionParser ops atom
+  where
+  -- operations from higher to lower priority
+  ops =
+    [ [ postfix "!" (\(Val v) -> Comp $ ComForce v)
+      ]
+    , [ application
+      ]
+    , [ prefix "in_0" (\(Val v) -> Val $ ValInjection Inj0 v)
+      , prefix "in_1" (\(Val v) -> Val $ ValInjection Inj1 v)
+      ]
+    ]
+  atom = msum
+    [ (Val . ValVariable) <$> varIdent
+    , Op <$> (symbol ":" *> identifier)
+    , pure (Val ValUnit) <* reserved "()"
+    , pure (Val ValWildcard) <* reserved "?"
+    , (Val . ValThunk) <$> (braces ((\(Comp m) -> m) <$> parseTerm))
+    , try valPair
+    , comLet
+    , comLambda
+    , comHandle
+    , comSplit
+    , comCase
+    , comCase0
+    , comReturn
+    , parens parseTerm
+    ]
 
-  val <- rule
-     $  whitespace *> val0
-    <|> sym '(' *> val <* sym ')'
+application = Infix space AssocLeft
+  where
+  space =
+    whiteSpace *>
+    notFollowedBy (choice . map reservedOp $ opNames) *>
+    return (\a b -> Comp $ app a b)
+  app (Comp m) (Val v) = ComLambdaApply m v
+  app (Op op)  (Val v) = ComOperationApply op v
 
-  comp0 <- rule
-     $  ComForce <$> (val <* sym '!')
-    <|> ComSplit <$> (list "split" *> sym '(' *> val)
-                 <*> (sym ',' *> comp <* sym ')')
-    <|> ComCase0 <$> (list "case0" *> sym '(' *> val <* sym ')')
-    <|> ComCase <$> (list "case" *> sym '(' *> val)
-                <*> (sym ',' *> comp)
-                <*> (sym ',' *> comp <* sym ')')
-    <|> ComReturn <$> (list "return" *> val)
-    <|> ComLet <$> (list "let" *> ident0)
-               <*> (syms "<-" *> comp)
-               <*> (syms "in" *> comp)
-    <|> ComLambda <$> (sym '\\' *> ident0)
-                  <*> (sym '.' *> comp)
-    <|> ComLambdaApply <$> comp
-                       <*> (sym ' ' *> val)
-    <|> ComOperationApply <$> (sym ':' *> ident)
-                          <*> (sym ' ' *> val)
-    <|> ComHandle <$> (list "handle" *> comp)
-                  <*> (syms "with" *> many handlerClause)
-    <?> "computation"
+binary  name fun assoc = Infix (do{ reservedOp name; return fun }) assoc
+prefix  name fun       = Prefix (do{ reservedOp name; return fun })
+postfix name fun       = Postfix (do{ reservedOp name; return fun })
 
-  comp <- rule
-     $  whitespace *> comp0
-    <|> sym '(' *> comp <* sym ')'
+valPair = parens (do
+  (Val v) <- parseTerm
+  reserved ","
+  (Val w) <- parseTerm
+  return $ Val $ ValPair v w
+  )
 
-  handlerClause <- rule
-     $  HanValClause <$> (sym '|' *> syms "return" *> ident0)
-                     <*> (syms "->" *> comp)
-    <|> HanOpClause <$> (sym '|' *> sym ':' *> ident)
-                    <*> (sym ' ' *> ident0)
-                    <*> (sym ' ' *> ident0)
-                    <*> (syms "->" *> comp)
-    <?> "handler clause"
+comLet = do
+  reserved "let"
+  x <- varIdent
+  reservedOp "<-"
+  (Comp m) <- parseTerm
+  reserved "in"
+  (Comp n) <- parseTerm
+  return $ Comp $ ComLet x m n
 
-  toplevel <- rule
-     $  TLDeclaration <$> (ident)
-                      <*> (sym '=' *> val)
+comLambda = do
+  symbol "\\"
+  whiteSpace
+  x <- varIdent
+  symbol "."
+  whiteSpace
+  (Comp m) <- parseTerm
+  return $ Comp $ ComLambda x m
 
-  return $ (many toplevel) <* whitespace
+comHandle = do
+  reserved "handle"
+  (Comp m) <- parseTerm
+  reserved "with"
+  clauses <- handlerClauses
+  return $ Comp $ ComHandle m clauses
 
+handlerClauses :: Parser [HandlerClause]
+handlerClauses = many (hanValClause <|> hanOpClause)
 
-parse :: String -> Program
-parse x = head $ fst $ fullParses (parser grammar) x
+hanValClause = do
+  try $ do
+          reserved "|"
+          reserved "return"
+  x <- varIdent
+  reserved "->"
+  (Comp m) <- parseTerm
+  return $ HanValClause x m
 
---    parseResult = head . fst . parse
+hanOpClause = do
+  reserved "|"
+  symbol ":"
+  op <- identifier
+  p <- varIdent
+  k <- varIdent
+  reserved "->"
+  (Comp m) <- parseTerm
+  return $ HanOpClause op p k m
 
-try :: String -> IO ()
-try x = do
-  print (fullParses (parser grammar) x)
+comSplit = reserved "split" *> parens (do
+  (Val v) <- parseTerm
+  reserved ","
+  (Comp m) <- parseTerm
+  return $ Comp $ ComSplit v m
+  )
+
+comCase = reserved "case" *> parens (do
+  (Val v) <- parseTerm
+  reserved ","
+  (Comp m) <- parseTerm
+  reserved ","
+  (Comp n) <- parseTerm
+  return $ Comp $ ComCase v m n
+  )
+
+comCase0 = reserved "case0" *> parens (do
+  (Val v) <- parseTerm
+  return $ Comp $ ComCase0 v
+  )
+
+comReturn =
+  (\(Val v) -> Comp $ ComReturn v) <$> (reserved "return" *> parseTerm)
+
+topLevel :: Parser TopLevelDeclaration
+topLevel = do
+  x <- identifier
+  symbol "="
+  whiteSpace
+  (Val v) <- parseTerm
+  symbol ";"
+  return $ TLDeclaration x v
+
+eol :: Parser ()
+eol = void (char '\n') <|> eof
+
+parseProgram :: Parser Program
+parseProgram = many topLevel
+
+--
+
+parseString :: String -> Either ParseError Program
+parseString s = parse (parseProgram <* eof) "" s
+
+parseFile :: FilePath -> IO (Either ParseError Program)
+parseFile f = parseFromFile (parseProgram <* eof) f
+
+try2 :: String -> IO ()
+try2 x = do
+  parseTest (whiteSpace *> parseProgram <* whiteSpace <* eof) x

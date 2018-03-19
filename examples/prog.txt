@@ -4,7 +4,7 @@ get2 =
   in let p <- :print (in_0 ())
   in let y <- :get ()
   in return (x, y)
-}
+};
 
 handlerRunState =
 { \comp.
@@ -12,6 +12,6 @@ handlerRunState =
   | return x -> (\s. (return (x, s)))
   | :get p k -> (\s. k! s s)
   | :put p k -> (\s. k! () p)
-}
+};
 
-main = {(handlerRunState! get2) ()}
+main = {(handlerRunState! get2) ()};
