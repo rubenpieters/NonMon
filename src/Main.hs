@@ -15,8 +15,6 @@ main = run "prog.txt"
 
 run :: String -> IO ()
 run file = do
---  prog :: String <- readFile file
---  let (parseResult :: Program) = parse prog
   (parseResult :: Program) <-
     parseFile file >>= \case
       Left err -> error (show err)

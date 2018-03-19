@@ -8,10 +8,10 @@ get2 =
 
 handlerRunState =
 { \comp.
-  handle (comp!) with
-  | return x -> (\s. (return (x, s)))
-  | :get p k -> (\s. k! s s)
-  | :put p k -> (\s. k! () p)
+  handle comp! with
+  | return x -> \s. return (x, s)
+  | :get p k -> \s. k! s s
+  | :put p k -> \s. k! () p
 };
 
-main = {(handlerRunState! get2) ()};
+main = {handlerRunState! get2 ()};
