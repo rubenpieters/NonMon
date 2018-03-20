@@ -95,8 +95,6 @@ data Computation
   | ComOperationApply OperationIdentifier Value
   -- handle M with H
   | ComHandle Computation Handler
-  -- internal operations
-  | ComInternalOp String Value Computation
   deriving (Show, Eq, Ord)
 
 type Handler = [HandlerClause]

@@ -20,6 +20,7 @@ data OpType
 
 findOp :: Handler -> OperationIdentifier -> OpType
 findOp [] "print" = InternalOp "print"
+findOp [] "xcase" = InternalOp "xcase"
 findOp [] op = error ("unhandled operation: " ++ op)
 findOp (HanOpClause op' p k m : _) op | op' == op = UserOp $
   ComLambda p (ComLambda k m)
@@ -33,7 +34,10 @@ findVal (_ : r) = findVal r
 repeatEval :: Program -> Computation -> IO Computation
 repeatEval p com = do
   evalCom p com >>= \case
-    Just newCom ->
+    Just newCom -> do
+      --print "--"
+      --print (prettyCom newCom)
+      --print newCom
       repeatEval p newCom
     Nothing -> return com
 
@@ -59,7 +63,7 @@ evalCom p (ComCase (ValInjection Inj0 v) (ComLambda x m) _) =
   m & substituteCom x v
 -- case(in_1 v, \x.m, \y.n)
 -- n[y=v]
-evalCom p (ComCase (ValInjection Inj1 v) (ComLambda y n) _) =
+evalCom p (ComCase (ValInjection Inj1 v) _ (ComLambda y n)) =
   return $ return $
   n & substituteCom y v
 -- {m}!
@@ -97,6 +101,19 @@ evalCom p (ComHandle (ComLet x m n) h) = do
   m' <- repeatEval p m
   return $ return $
     ComHandle (ComLet x m' n) h
+evalCom p (ComHandle (ComCase x (ComLambda a m) (ComLambda b n)) h) =
+  let
+    eM = findOp h "xcase"
+    mx1 = maxTickCom m
+    mx2 = maxTickCom n
+    tickedHandle1 = (ComHandle m (h & addTickHan (mx1 + 1)))
+    tickedHandle2 = (ComHandle n (h & addTickHan (mx2 + 1)))
+  in
+  case eM of
+    UserOp userM -> return $ return $
+      ComLambdaApply (ComLambdaApply (ComLambdaApply userM x) (ValThunk (ComLambda a tickedHandle1))) (ValThunk (ComLambda b tickedHandle2))
+    InternalOp _ -> return $ return $
+      ComCase x (ComHandle m h) (ComHandle n h)
 evalCom p (ComHandle m h) = do
   m' <- repeatEval p m
   return $ return $

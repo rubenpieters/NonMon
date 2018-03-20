@@ -1,0 +1,36 @@
+pr3 =
+{
+     let x <- return (in_1 ())
+  in case(x
+  , \a. let p <- :print (in_0 ())
+        in return a
+  , \b. let p <- :print (in_1 ())
+        in return b
+  )
+};
+
+handler =
+{ \comp.
+  handle comp! with
+  | return x -> return x
+  | :xcase p k -> \x.\m.\n. return x
+--  | :xcase p k -> \x.\m.\n. let a <- m () in let b <- n () in return (x, a, b)
+};
+
+
+--main = {handler! pr3};
+main = {
+  handle (case(in_1 ()
+  , \a. let p <- :print (in_0 ())
+        in return a
+  , \b. let p <- :print (in_1 ())
+        in return b
+  ))
+  with
+  | return x -> return x
+  | :xcase p k -> \x.\m.\n. (
+         let a <- m! ()
+      in let b <- n! ()
+      in return (x, (a, b))
+    )
+};
