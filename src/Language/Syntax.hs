@@ -67,9 +67,6 @@ data Value
   | ValInjection InjectIdentifier Value
   -- {M}
   | ValThunk Computation
-  -- the wildcard value, used for creating non-monadic handlers
-  -- ?
-  | ValWildcard
   deriving (Show, Eq, Ord)
 
 -- M,N ::=
@@ -95,8 +92,6 @@ data Computation
   | ComOperationApply OperationIdentifier Value
   -- handle M with H
   | ComHandle Computation Handler
-  -- internal operations
-  | ComInternalOp String Value Computation
   deriving (Show, Eq, Ord)
 
 type Handler = [HandlerClause]

@@ -33,7 +33,10 @@ findVal (_ : r) = findVal r
 repeatEval :: Program -> Computation -> IO Computation
 repeatEval p com = do
   evalCom p com >>= \case
-    Just newCom ->
+    Just newCom -> do
+      --print "--"
+      --print (prettyCom newCom)
+      --print newCom
       repeatEval p newCom
     Nothing -> return com
 
@@ -59,7 +62,7 @@ evalCom p (ComCase (ValInjection Inj0 v) (ComLambda x m) _) =
   m & substituteCom x v
 -- case(in_1 v, \x.m, \y.n)
 -- n[y=v]
-evalCom p (ComCase (ValInjection Inj1 v) (ComLambda y n) _) =
+evalCom p (ComCase (ValInjection Inj1 v) _ (ComLambda y n)) =
   return $ return $
   n & substituteCom y v
 -- {m}!
@@ -97,6 +100,9 @@ evalCom p (ComHandle (ComLet x m n) h) = do
   m' <- repeatEval p m
   return $ return $
     ComHandle (ComLet x m' n) h
+evalCom p (ComHandle (ComCase x (ComLambda a m) (ComLambda b n)) h) =
+  return $ return $
+      ComCase x (ComHandle m h) (ComHandle n h)
 evalCom p (ComHandle m h) = do
   m' <- repeatEval p m
   return $ return $
@@ -211,7 +217,6 @@ substituteVal x v (ValInjection inj v') =
 substituteVal x v (ValThunk m') =
   ValThunk
     (m' & substituteCom x v)
-substituteVal _ _ w@(ValWildcard) = w
 
 -- very simple alpha renaming
 -- keep track of extra number for (un)bound variables (the ticker)
@@ -227,7 +232,6 @@ maxTickVal val = go 0 val
     go mx (ValPair v w) = max (go mx v) (go mx w)
     go mx (ValInjection _ v) = go mx v
     go mx (ValThunk m) = max mx (maxTickCom m)
-    go mx (ValWildcard) = mx
 
 maxTickCom :: Computation -> Int
 maxTickCom com = go 0 com
@@ -258,7 +262,6 @@ addTickVal _ v@(ValUnit) = v
 addTickVal x (ValPair v w) = ValPair (v & addTickVal x) (w & addTickVal x)
 addTickVal x (ValInjection inj v) = ValInjection inj (v & addTickVal x)
 addTickVal x (ValThunk m) = ValThunk (m & addTickCom x)
-addTickVal _ v@(ValWildcard) = v
 
 addTickCom :: Int -> Computation -> Computation
 addTickCom x (ComSplit v m) = ComSplit (v & addTickVal x) (m & addTickCom x)

@@ -9,7 +9,6 @@ prettyVal (ValPair v w) = "(" ++ prettyVal v ++ ", " ++ prettyVal w ++ ")"
 prettyVal (ValInjection Inj0 v) = "in_0 " ++ prettyVal v
 prettyVal (ValInjection Inj1 v) = "in_1 " ++ prettyVal v
 prettyVal (ValThunk m) = "{" ++ prettyCom m ++ "}"
-prettyVal (ValWildcard) = "?"
 
 prettyCom :: Computation -> String
 prettyCom (ComSplit v m) = "split(" ++ prettyVal v ++ ", " ++ prettyCom m ++ ")"

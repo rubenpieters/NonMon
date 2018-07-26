@@ -19,13 +19,14 @@ run file = do
     parseFile file >>= \case
       Left err -> error (show err)
       Right prog -> return prog
-  putStrLn "parsed"
+  putStrLn "| parsed:"
   print parseResult
+  putStrLn "| eval:"
   let (mainDef :: Computation) = findMain parseResult
   (evaledMain :: Computation) <- repeatEval parseResult mainDef
-  putStrLn "evaled"
+  putStrLn "| evaled:"
   print evaledMain
-  putStrLn "evaled pretty"
+  putStrLn "| evaled pretty:"
   print (prettyCom evaledMain)
 
 findMain :: Program -> Computation
@@ -33,4 +34,3 @@ findMain [] = error "could not find main"
 findMain (TLDeclaration "main" (ValThunk com) : _) = com
 findMain (TLDeclaration "main" _ : _) = error "main should be a thunk"
 findMain (_ : r) = findMain r
-

@@ -90,7 +90,6 @@ parseTerm =
     [ (Val . ValVariable) <$> varIdent
     , Op <$> (symbol ":" *> identifier)
     , pure (Val ValUnit) <* reserved "()"
-    , pure (Val ValWildcard) <* reserved "?"
     , (Val . ValThunk) <$> (braces ((\(Comp m) -> m) <$> parseTerm))
     , try valPair
     , comLet
