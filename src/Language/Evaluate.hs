@@ -297,3 +297,9 @@ testAlphaRename = evalCom [] $
   ComLambdaApply
     (ComLambda ("x", 0) (ComLambda ("z", 0) (ComForce (ValVariable ("x", 0)))))
     (ValVariable ("z", 0))
+
+findMain :: Program -> Computation
+findMain [] = error "could not find main"
+findMain (TLDeclaration "main" (ValThunk com) : _) = com
+findMain (TLDeclaration "main" _ : _) = error "main should be a thunk"
+findMain (_ : r) = findMain r
