@@ -12,49 +12,6 @@ data TopLevelDeclaration
   = TLDeclaration DeclarationIdentifier Value
   deriving (Show, Eq, Ord)
 
--- A,B ::=
-data ValueType
-  -- 1
-  = VTUnit
-  -- A x B
-  | VTProduct ValueType ValueType
-  -- 0
-  | VTEmpty
-  -- A + B
-  | VTSum ValueType ValueType
-  -- {C}_E
-  | VTThunk ComputationType EffectSignature
-  deriving (Show, Eq, Ord)
-
--- C ::=
-data ComputationType
-  -- [A]
-  = CTReturner
-  -- A -> C
-  | CTFunction
-  deriving (Show, Eq, Ord)
-
--- E ::= { op: A -> B } ⨄ E | {f} ⨄ E | ∅
-type EffectSignature =
-  ( [(OperationIdentifier, ValueType, ValueType)]
-  , [FlowEffect]
-  )
-
--- f ::= c | d
-data FlowEffect
-  = Control
-  | Data
-  deriving (Show, Eq, Ord)
-
--- x: A | x*: A
-data Activity
-  = Active
-  | InActive
-  deriving (Show, Eq, Ord)
-
--- Γ ::= Γ, x: A | Γ, x*: A | ⸳
-type Environment = [(Activity, VariableIdentifier, ValueType)]
-
 -- V,W ::=
 data Value
   -- x
